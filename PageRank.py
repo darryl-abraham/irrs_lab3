@@ -3,6 +3,8 @@
 from collections import namedtuple
 import time
 import sys
+import math
+import numpy as np
 
 class Edge:
     def __init__ (self, origin=None):
@@ -18,14 +20,15 @@ class Airport:
     def __init__ (self, iden=None, name=None):
         self.code = iden
         self.name = name
-        self.routes = [] # vector of edges of incoming routes
-        self.routeHash = dict()
+        # self.routes = [] # vector of edges of incoming routes
+        self.routeHash = dict()     # dictionary of edges of incoming routes, indexed by the origin airport code
         self.outweight =  0  # sum of all routes in which the airport is origin
+        self.pageIndex = 0
 
     def __repr__(self):
         return f"{self.code}\t{self.pageIndex}\t{self.name}"
 
-edgeList = [] # list of Edge
+# edgeList = [] # list of Edge
 edgeHash = dict() # hash of edge to ease the match
 airportList = [] # list of Airport
 airportHash = dict() # hash key IATA code -> Airport
@@ -63,17 +66,106 @@ def readRoutes(fd):
             destination = parts[4].strip()
             if origin in airportHash and destination in airportHash:
                 originAirport = airportHash[origin]
-                edge = Edge(origin=originAirport)
-                originAirport.routes.append(edge)
-                originAirport.outweight += 1
-                edgeList.append(edge)
-                edgeHash[(origin, destination)] = edge
+                destinationAirport = airportHash[destination]
+                # There's already an edge, just increase its weight
+                if destinationAirport.routeHash.get(origin):
+                    destinationAirport.routeHash[origin].weight += 1
+                    originAirport.outweight += 1
+                else:
+                    edge = Edge(origin = originAirport)
+                    # edgeList.append(edge)
+                    edgeHash[(origin, destination)] = edge
+                    destinationAirport.routeHash[origin] = edge
+                    originAirport.outweight += 1
+
+def method1(L):
+    n = len(airportList)
+
+    # Adding self-loops
+    for airport in airportList:
+        edge = Edge(origin = airport)
+        edgeHash[(airport.code, airport.code)] = edge
+        airport.routeHash[airport.code] = edge
+        airport.outweight += 1
+
+    iterations = 0
+    while(True):
+        iterations += 1
+        Q = [0 for i in range(n)]
+        for i in range(n):
+            for route in airportList[i].routeHash.values():
+                Q[i] = Q[i] + route.origin.pageIndex * route.weight / route.origin.outweight
+            Q[i] = L * Q[i] + (1-L)/n
+        # print(Q)
+        # print(np.linalg.norm(Q,1))
+
+        # print([airport.pageIndex for airport in airportList])
+        equal = True
+        for i in range(n):
+            if(not(math.isclose(airportList[i].pageIndex, Q[i], rel_tol=1e-6))):
+                equal = False
+                break
+        if equal:
+            break
+        for i in range(len(airportList)):
+            airportList[i].pageIndex = Q[i]
+
+    return iterations
+
+def method2(L):
+    n = len(airportList)
+    
+    iterations = 0
+    while(True):
+        iterations += 1
+        Q = [0 for i in range(n)]
+        noOutAirports = 0
+        overallSum = 0
+        for i in range(n):
+            for route in airportList[i].routeHash.values():
+                Q[i] = Q[i] + route.origin.pageIndex * route.weight / route.origin.outweight
+            Q[i] = L * Q[i] + (1-L)/n
+            overallSum += Q[i]
+            if airportList[i].outweight == 0:
+                # noOutAirports.append((i, sum(edge.weight for edge in airportList[i].routeHash.values())))
+                noOutAirports += 1
+        
+        if (noOutAirports) > 0:
+            overallSum = (1-overallSum) / sum(edge.weight for edge in edgeHash.values()) # sum(i[1] for i in noOutAirports)
+            for i in range(n):
+                # Q[airport[0]] += overallSum * airport[1]
+                Q[i] += overallSum * sum(edge.weight for edge in airportList[i].routeHash.values())
+        # print(Q)
+        # print(np.linalg.norm(Q,1))
+
+        equal = True
+        for i in range(n):
+            if(not(math.isclose(airportList[i].pageIndex, Q[i], rel_tol=1e-6))):
+                equal = False
+                break
+        if (equal):
+            break
+        for i in range(len(airportList)):
+            airportList[i].pageIndex = Q[i]
+    return iterations
 
 def computePageRanks():
     # write your code
+    L = 0.85
+    for airport in airportList:
+        airport.pageIndex = 1/len(airportList)
+    # return method1(L)
+    return method2(L)
+
 
 def outputPageRanks():
     # write your code
+    rank = 1
+    # print([airport.pageIndex for airport in airportList])
+    file = open("output1", "w")
+    for index in np.argsort([airport.pageIndex for airport in airportList])[::-1]:
+        file.write(str(rank) + " - " + str(airportList[index]) + "\n")
+        rank += 1
 
 def main(argv=None):
     readAirports("airports.txt")
