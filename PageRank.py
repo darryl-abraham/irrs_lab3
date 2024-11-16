@@ -6,8 +6,8 @@ import sys
 
 class Edge:
     def __init__ (self, origin=None):
-        self.origin = ... # write appropriate value
-        self.weight = ... # write appropriate value
+        self.origin = origin
+        self.weight = 1
 
     def __repr__(self):
         return "edge: {0} {1}".format(self.origin, self.weight)
@@ -20,7 +20,7 @@ class Airport:
         self.name = name
         self.routes = [] # vector of edges of incoming routes
         self.routeHash = dict()
-        self.outweight =    # write appropriate value (sum of all routes in which the airport is origin)
+        self.outweight =  0  # sum of all routes in which the airport is origin
 
     def __repr__(self):
         return f"{self.code}\t{self.pageIndex}\t{self.name}"
@@ -54,7 +54,20 @@ def readAirports(fd):
 
 def readRoutes(fd):
     print("Reading Routes file from {fd}")
-    # write your code
+    with open(fd, 'r') as file:
+        for line in file:
+            parts = line.strip().split(',')
+            if not parts[2] or not parts[4]:
+                continue  # Skip invalid or incomplete lines
+            origin = parts[2].strip()
+            destination = parts[4].strip()
+            if origin in airportHash and destination in airportHash:
+                originAirport = airportHash[origin]
+                edge = Edge(origin=originAirport)
+                originAirport.routes.append(edge)
+                originAirport.outweight += 1
+                edgeList.append(edge)
+                edgeHash[(origin, destination)] = edge
 
 def computePageRanks():
     # write your code
