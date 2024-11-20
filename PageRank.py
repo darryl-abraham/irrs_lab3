@@ -5,6 +5,7 @@ import time
 import sys
 import math
 import numpy as np
+import argparse
 
 class Edge:
     def __init__ (self, origin=None):
@@ -27,6 +28,13 @@ class Airport:
 
     def __repr__(self):
         return f"{self.code}\t{self.pageIndex}\t{self.name}"
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--f", help="If set, writes the output into a file named output_methodX, where X is the chosen method.", action="store_true")
+parser.add_argument("--method", help="The method to be used.", default=1, choices=[1,2,3], type=int)
+args=parser.parse_args()
+
+method = int(args.method)
 
 # edgeList = [] # list of Edge
 # edgeHash = dict() # hash of edge to ease the match
@@ -82,6 +90,7 @@ def readRoutes(fd):
                     originAirport.outweight += 1
 
 def method1(L):
+    # Adding self-loops of weight = 1 to every node
     n = len(airportList)
 
     iterations = 0
@@ -109,6 +118,9 @@ def method1(L):
     return iterations
 
 def method2(L):
+    # Letting the vector p have norm_1 = 1 by "filling" the gap between the real norm and 1 (after the application of the standard formula)
+    # The remaining portion to arrive to 1 is divided through all the nodes, based on their incoming edges
+    # The more a node has an incoming weight (i.e., the sum of the weights of its incoming edges), the more it will receive a fraction of this portion
     n = len(airportList)
     
     iterations = 0
@@ -147,19 +159,63 @@ def method2(L):
             airportList[i].pageIndex = Q[i]
     return iterations
 
+def method3(L):
+    # For the problematic nodes without outgoing edges, an outgoing edge is added for each incoming one, back to its origin, with the same weight
+    n = len(airportList)
+    global numberOfRoutes
+
+    # We could also scan through all the routes, but it's better to scan all the airports, since they're << the number of routes
+    for airport in airportList:
+        if airport.outweight == 0:
+            for route in airport.routeHash.values():
+                route.origin.routeHash[airport] = Edge(origin=airport)
+                numberOfRoutes += 1     # just for coherence
+                airport.outweight += route.weight
+                
+    iterations = 0
+    while(True):
+        iterations += 1
+        Q = [0 for i in range(n)]
+        for i in range(n):
+            currentAirport = airportList[i]
+            for route in currentAirport.routeHash.values():
+                Q[i] = Q[i] + route.origin.pageIndex * route.weight / (route.origin.outweight + 1)      # +1 to consider also the self-loop
+            Q[i] = L * Q[i] + (1-L)/n
+        # print(Q)
+        # print(np.linalg.norm(Q,1))
+
+        equal = True
+        for i in range(n):
+            if(not(math.isclose(airportList[i].pageIndex, Q[i], rel_tol=1e-6))):
+                equal = False
+                break
+        if equal:
+            break
+        for i in range(len(airportList)):
+            airportList[i].pageIndex = Q[i]
+
+    return iterations
+
+
 def computePageRanks():
     # write your code
     L = 0.85
     for airport in airportList:
         airport.pageIndex = 1/len(airportList)
-    #return method1(L)
-    return method2(L)
+    if method == 2:
+        return method2(L)
+    if method == 3:
+        return method3(L)
+    return method1(L)           # default
 
 
 def outputPageRanks():
     # write your code
     rank = 1
-    file = open("output1", "w")
+    if args.f:
+        file = open("output_method" + str(method) + ".txt", "w")
+    else:
+        file = open(1, "w")      # stdout
     for index in np.argsort([airport.pageIndex for airport in airportList])[::-1]:
         file.write(str(rank) + " - " + str(airportList[index]) + "\n")
         rank += 1
