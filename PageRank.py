@@ -32,15 +32,26 @@ class Airport:
 parser = argparse.ArgumentParser()
 parser.add_argument("--f", help="If set, writes the output into a file named output_methodX, where X is the chosen method.", action="store_true")
 parser.add_argument("--method", help="The method to be used.", default=1, choices=[1,2,3], type=int)
+parser.add_argument("--L", help="The dumping factor to be used.", default=0.85, type=float)
+parser.add_argument("--convFactor", help="The convergence factor to stop the power method (i.e., the number of decimal digits).", default=6, type=int)
 args=parser.parse_args()
 
 method = int(args.method)
+convFactor = int(args.convFactor)
+if convFactor <= 0:
+    print("Convergence factor must be positive. Using 6 as default.")
+    convFactor = 6
+L = float(args.L)
+if L <= 0 or L >= 1:
+    print("Lambda must be a value between 0 and 1. Using 0.85 as default.")
+    L = 0.85
 
 # edgeList = [] # list of Edge
 # edgeHash = dict() # hash of edge to ease the match
 airportList = [] # list of Airport
 airportHash = dict() # hash key IATA code -> Airport
 numberOfRoutes = 0
+convergenceDistance = 1 * 10**(-convFactor)
 
 def readAirports(fd):
     print("Reading Airport file from {0}".format(fd))
@@ -90,7 +101,7 @@ def readRoutes(fd):
                     destinationAirport.routeHash[originCode] = edge
                     originAirport.outweight += 1
 
-def method1(L):
+def method1():
     # Adding self-loops of weight = 1 to every node
     n = len(airportList)
 
@@ -106,7 +117,7 @@ def method1(L):
                 Q[i] = Q[i] + route.origin.pageIndex * route.weight / (route.origin.outweight + 1)      # +1 to consider also the self-loop
             Q[i] = Q[i] + currentAirport.pageIndex * 1 / (currentAirport.outweight + 1)         # Adding the term related to the self-loop
             Q[i] = L * Q[i] + (1-L)/n     
-            if(equal and not(math.isclose(currentAirport.pageIndex, Q[i], rel_tol=1e-6))):
+            if(equal and not(math.isclose(currentAirport.pageIndex, Q[i], rel_tol=convergenceDistance))):
                 equal = False
             currentAirport.pageIndex = Q[i]
 
@@ -114,7 +125,7 @@ def method1(L):
         # print(np.linalg.norm(Q,1))
     return iterations
 
-def method2(L):
+def method2():
     # Letting the vector p have norm_1 = 1 by "filling" the gap between the real norm and 1 (after the application of the standard formula)
     # The remaining portion to arrive to 1 is divided through all the nodes, based on their incoming edges
     # The more a node has an incoming weight (i.e., the sum of the weights of its incoming edges), the more it will receive a fraction of this portion
@@ -127,14 +138,11 @@ def method2(L):
         Q = [0 for i in range(n)]
         noOutAirports = False
         overallSum = 0
-        incomingWeights = dict()        # a dictionary with the sum of the incoming weights for each node
         equal = True
         for i in range(n):
             currentAirport = airportList[i]
-            incomingWeights[i] = 0
             for route in currentAirport.routeHash.values():
                 Q[i] = Q[i] + route.origin.pageIndex * route.weight / route.origin.outweight
-                incomingWeights[i] += route.weight
             Q[i] = L * Q[i] + (1-L)/n
             overallSum += Q[i]
             if currentAirport.outweight == 0:
@@ -143,8 +151,8 @@ def method2(L):
         if (noOutAirports):
             overallSum = (1-overallSum) / numberOfRoutes # since #routes = sum of all the weights of all the edges
             for i in range(n):
-                Q[i] += overallSum * incomingWeights[i]
-                if(equal and not(math.isclose(airportList[i].pageIndex, Q[i], rel_tol=1e-6))):
+                Q[i] += overallSum * len(airportList[i].routeHash)
+                if(equal and not(math.isclose(airportList[i].pageIndex, Q[i], rel_tol=convergenceDistance))):
                     equal = False
                 airportList[i].pageIndex = Q[i]
         
@@ -153,7 +161,7 @@ def method2(L):
 
     return iterations
 
-def method3(L):
+def method3():
     # For the nodes with no incoming and no outgoing edges, the ranking is 0
     # For the problematic nodes without outgoing edges (but with some incoming), an outgoing edge is added for each incoming one, back to its origin, with the same weight
     n = len(airportList)
@@ -163,6 +171,7 @@ def method3(L):
         if airport.outweight == 0:
             # No incoming and no outcoming
             if len(airport.routeHash) == 0:
+                # Using the additional airportHash structure to distinguish all the airports between the virtual ones
                 del airportHash[airport.code]
             else:
                 for route in airport.routeHash.values():
@@ -187,7 +196,7 @@ def method3(L):
                 Q[i] = Q[i] + route.origin.pageIndex * route.weight / (route.origin.outweight)      
             if Q[i] != 0:           
                 Q[i] = L * Q[i] + (1-L)/n2
-            if(equal and not(math.isclose(currentAirport.pageIndex, Q[i], rel_tol=1e-6))):
+            if(equal and not(math.isclose(currentAirport.pageIndex, Q[i], rel_tol=convergenceDistance))):
                 equal = False
             currentAirport.pageIndex = Q[i]
 
@@ -198,15 +207,14 @@ def method3(L):
 
 def computePageRanks():
     # write your code
-    L = 0.85
     if method != 3:     # method 3 has a different initialization
         for airport in airportList:
             airport.pageIndex = 1/len(airportList)
     if method == 2:
-        return method2(L)
+        return method2()
     if method == 3:
-        return method3(L)
-    return method1(L)           # default
+        return method3()
+    return method1()           # default
 
 
 def outputPageRanks():
